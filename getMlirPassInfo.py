@@ -7,7 +7,7 @@ Returns:
     dumps the relevant files for each passname in the file
 
 Example usage:
-    python getPassInfo.py passnames.txt
+    python getPassInfo.py passnames.txt pattern repo_path1 repo_path2 ...
 To get the relevant filenames in MLIR repo for the (unique) passes in a log file
 """
 import re
@@ -18,29 +18,32 @@ from concurrent.futures import ProcessPoolExecutor
 import os
 
 def get_relevant_files(args):
-    passname, repo_path = args
-    result = subprocess.run(
-        ['git', '-C', repo_path, 'grep', '-e', passname],
-        stdout=subprocess.PIPE,
-        text=True
-    )
+    passname, repo_paths = args
     cpp_files = set()
     h_files = set()
     mlir_files = set()
     td_files = set()
     other_files = set()
-    for line in result.stdout.splitlines():
-        file_path = line.split(':')[0]
-        if file_path.endswith('.cpp'):
-            cpp_files.add(file_path)
-        elif file_path.endswith('.h'):
-            h_files.add(file_path)
-        elif file_path.endswith('.mlir'):
-            mlir_files.add(file_path)
-        elif file_path.endswith('.td'):
-            td_files.add(file_path)
-        else:
-            other_files.add(file_path)
+
+    for repo_path in repo_paths:
+        result = subprocess.run(
+            ['git', '-C', repo_path, 'grep', '-e', passname],
+            stdout=subprocess.PIPE,
+            text=True
+        )
+        for line in result.stdout.splitlines():
+            file_path = line.split(':')[0]
+            if file_path.endswith('.cpp'):
+                cpp_files.add(file_path)
+            elif file_path.endswith('.h'):
+                h_files.add(file_path)
+            elif file_path.endswith('.mlir'):
+                mlir_files.add(file_path)
+            elif file_path.endswith('.td'):
+                td_files.add(file_path)
+            else:
+                other_files.add(file_path)
+
     return passname, list(cpp_files), list(h_files), list(mlir_files), list(td_files), list(other_files)
 
 def extract_passnames(filename, pattern):
@@ -56,13 +59,13 @@ def create_dataframe(passnames):
     df = pd.DataFrame(passnames, columns=['passname', 'mlir-passname'])
     return df
 
-def main(filename, pattern, repo_path):
+def main(filename, pattern, repo_paths):
     passnames = extract_passnames(filename, pattern)
     df = create_dataframe(passnames)
 
     try:
         with ProcessPoolExecutor() as executor:
-            results = list(executor.map(get_relevant_files, [(p[1], repo_path) for p in set(passnames)]))
+            results = list(executor.map(get_relevant_files, [(p[1], repo_paths) for p in set(passnames)]))
     finally:
         pass
 
@@ -84,10 +87,10 @@ def main(filename, pattern, repo_path):
     print(f"DataFrame has been written to {output_file}")
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("Usage: python getPassInfo.py <filename> <pattern> <repo_path>")
+    if len(sys.argv) < 4:
+        print("Usage: python getPassInfo.py <filename> <pattern> <repo_path1> <repo_path2> ...")
         sys.exit(1)
     filename = sys.argv[1]
     pattern = sys.argv[2]
-    repo_path = sys.argv[3]
-    main(filename, pattern, repo_path)
+    repo_paths = sys.argv[3:]
+    main(filename, pattern, repo_paths)
