@@ -17,6 +17,18 @@ import subprocess
 from concurrent.futures import ProcessPoolExecutor
 import os
 
+def get_repo_name(repo_path):
+    result = subprocess.run(
+        ['git', '-C', repo_path, 'remote', '-v'],
+        stdout=subprocess.PIPE,
+        text=True
+    )
+    if result.stdout:
+        remote_url = result.stdout.split()[1]
+        repo_name = os.path.basename(remote_url).replace('.git', '')
+        return repo_name
+    return os.path.basename(repo_path)
+
 def get_relevant_files(args):
     passname, repo_paths = args
     cpp_files = set()
@@ -26,6 +38,7 @@ def get_relevant_files(args):
     other_files = set()
 
     for repo_path in repo_paths:
+        repo_name = get_repo_name(repo_path)
         result = subprocess.run(
             ['git', '-C', repo_path, 'grep', '-e', passname],
             stdout=subprocess.PIPE,
@@ -33,16 +46,17 @@ def get_relevant_files(args):
         )
         for line in result.stdout.splitlines():
             file_path = line.split(':')[0]
-            if file_path.endswith('.cpp'):
-                cpp_files.add(file_path)
-            elif file_path.endswith('.h'):
-                h_files.add(file_path)
-            elif file_path.endswith('.mlir'):
-                mlir_files.add(file_path)
-            elif file_path.endswith('.td'):
-                td_files.add(file_path)
+            prefixed_file_path = f"{repo_name}::{file_path}"
+            if prefixed_file_path.endswith('.cpp'):
+                cpp_files.add(prefixed_file_path)
+            elif prefixed_file_path.endswith('.h'):
+                h_files.add(prefixed_file_path)
+            elif prefixed_file_path.endswith('.mlir'):
+                mlir_files.add(prefixed_file_path)
+            elif prefixed_file_path.endswith('.td'):
+                td_files.add(prefixed_file_path)
             else:
-                other_files.add(file_path)
+                other_files.add(prefixed_file_path)
 
     return passname, list(cpp_files), list(h_files), list(mlir_files), list(td_files), list(other_files)
 
